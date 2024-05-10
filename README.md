@@ -18,22 +18,21 @@ Install go 1.20 or higher
 ## Build
 
 ```bash
-go mod tidy
-go build 
+make install
 ```
 
 ## Usage
 ### Find public rpcs by one rpc
 ```bash
-./cosmos-node-finder rpcfinder <one public rpc> <chain-id>
+cosmos-node-finder rpcfinder <one public rpc> <chain-id>
 ```
 for example
 ```bash
-./cosmos-node-finder rpcfinder https://rpc.evmos.silentvalidator.com:443 evmos_9001-2
+cosmos-node-finder rpcfinder https://rpc.evmos.silentvalidator.com:443 evmos_9001-2
 ```
 ### Find live peers by one rpc 
 ```bash
-./cosmos-node-finder peerfinder <one public rpc> <chain-id>
+cosmos-node-finder peerfinder <one public rpc> <chain-id>
 ```
 for example
 ```bash
