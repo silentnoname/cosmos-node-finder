@@ -36,5 +36,5 @@ cosmos-node-finder peerfinder <one public rpc> <chain-id>
 ```
 for example
 ```bash
-./cosmos-node-finder peerfinder https://rpc.evmos.silentvalidator.com:443 evmos_9001-2
+cosmos-node-finder peerfinder https://rpc.evmos.silentvalidator.com:443 evmos_9001-2
 ```
