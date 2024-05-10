@@ -5,8 +5,15 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/cometbft/cometbft/crypto"
+	"github.com/cometbft/cometbft/crypto/ed25519"
+	"github.com/cometbft/cometbft/p2p"
+	"github.com/cometbft/cometbft/p2p/conn"
 	"github.com/spf13/cobra"
+	"net"
+	"strings"
 	"sync"
+	"time"
 )
 
 // peerfinderCmd represents the peerfinder command
@@ -23,6 +30,12 @@ This command may take up to 1 minute to complete.`,
 			fmt.Println("Invalid timeout value")
 			return
 		}
+		limit, err := cmd.Flags().GetInt("limit")
+		if err != nil {
+			fmt.Println("Invalid limit value")
+			return
+		}
+
 		rpc := args[0]
 		chainid := args[1]
 		peers, err := GetLivePeersInOneString(rpc, chainid, timeout, 3)
@@ -33,7 +46,9 @@ This command may take up to 1 minute to complete.`,
 			fmt.Println("No live peers found, pls check your rpc and chain-id")
 			return
 		}
-		fmt.Println(peers)
+		validatePeers := validatePeers(peers, limit, timeout)
+		//print number of peers
+		fmt.Println(validatePeers)
 
 	},
 }
@@ -41,6 +56,7 @@ This command may take up to 1 minute to complete.`,
 func init() {
 	rootCmd.AddCommand(peerfinderCmd)
 	peerfinderCmd.Flags().Float64P("timeout", "t", 10.0, "Timeout in seconds. Set less timeout if you want to get result faster.(You may get less peers)")
+	peerfinderCmd.Flags().IntP("limit", "l", 50, "Limit the number of peers. The default value is 50.")
 }
 
 // GetLivePeers get live peers from []PeerInfo
@@ -119,4 +135,89 @@ func GetLivePeersInOneString(rpcaddr string, chainid string, timeout float64, ma
 	}
 	peersInOneString = peersString[:len(peersString)-1]
 	return peersInOneString, nil
+}
+
+func validatePeers(peers string, limit int, timeout float64) string {
+	// Generate random node key for handshake
+	privKey := ed25519.GenPrivKey()
+	nodeKey := &p2p.NodeKey{
+		PrivKey: privKey,
+	}
+	var valid []string
+	var mu sync.Mutex
+	addValid := func(peer string) {
+		mu.Lock()
+		defer mu.Unlock()
+		if limit > 0 && len(valid) >= limit {
+			return
+		}
+		valid = append(valid, peer)
+	}
+	var wg sync.WaitGroup
+	peerSplit := strings.Split(peers, ",")
+	wg.Add(len(peerSplit))
+
+	for _, peer := range peerSplit {
+		peer := peer
+		go func() {
+			defer wg.Done()
+			peerAt := strings.Split(peer, "@")
+			if len(peerAt) == 1 {
+				peer = fmt.Sprintf("%s@%s", nodeKey.PubKey().Address(), peer)
+			}
+			netAddr, err := p2p.NewNetAddressString(peer)
+			if err != nil {
+				return
+			}
+			c, err := netAddr.DialTimeout(time.Duration(timeout) * time.Second)
+			if err != nil {
+				return
+			}
+			defer c.Close()
+			secretConn, err := upgradeSecretConn(c, time.Duration(timeout)*time.Second, nodeKey.PrivKey)
+			if err != nil {
+				return
+			}
+			defer secretConn.Close()
+			// For outgoing conns, ensure connection key matches dialed key.
+			connID := p2p.PubKeyToID(secretConn.RemotePubKey())
+			if connID != netAddr.ID {
+				addValid(fmt.Sprintf("%s@%s", connID, strings.Split(peer, "@")[1]))
+				return
+			}
+			addValid(peer)
+		}()
+	}
+
+	wg.Wait()
+	var peersString string
+	var peersInOneString string
+	if len(valid) == 0 {
+		println("No valid peers found")
+		return ""
+	}
+	fmt.Println(len(valid), "validated peers:")
+	for _, peer := range valid {
+		peersString = peersString + peer + ","
+
+	}
+	peersInOneString = peersString[:len(peersString)-1]
+	return peersInOneString
+}
+
+func upgradeSecretConn(
+	c net.Conn,
+	timeout time.Duration,
+	privKey crypto.PrivKey,
+) (*conn.SecretConnection, error) {
+	if err := c.SetDeadline(time.Now().Add(timeout)); err != nil {
+		return nil, err
+	}
+
+	sc, err := conn.MakeSecretConnection(c, privKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return sc, sc.SetDeadline(time.Time{})
 }

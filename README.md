@@ -6,6 +6,8 @@ A cli tool to find cosmos chains public rpc nodes and live peers.
 cosmos-node-finder is a cli tool to find [cosmos chains](https://cosmos.network/) public rpc nodes and live peers.
 You can get detailed info of these public rpc nodes(latest height,if it is an archive node, validator...)
 
+Thanks to strangelove's https://github.com/strangelove-ventures/tmp2p, now the peer found will be validated.
+
 ## Warning and Disclaimer
 cosmos-node-finder is intended for educational and informational purposes only. Users must not use this tool for illegal activities, such as network attacks or unauthorized data access. Compliance with all applicable laws in your region is required. The developer is not responsible for any misuse or consequences arising from the use of this tool. Use responsibly.
 
