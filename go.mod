@@ -1,4 +1,4 @@
-module cosmos-node-finder
+module github.com/silentnoname/cosmos-node-finder
 
 go 1.21
 
