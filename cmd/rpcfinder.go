@@ -227,15 +227,19 @@ func GetAllOpenRPCPeers(netinfo NetInfo, chainid string, timeout float64, visite
 	peersinfo := GetPeersInfo(netinfo, chainid)
 
 	peerMap := make(map[string]PeerInfo)
+	var visitedMutex sync.Mutex
+	var peerMapMutex sync.Mutex
 
+	visitedMutex.Lock()
 	for _, peer := range peersinfo {
 		if peer.RpcIsOpen && !visited[peer.Id] {
 			peerMap[peer.Id] = peer
 			visited[peer.Id] = true
 		}
 	}
+	visitedMutex.Unlock()
+
 	sem := make(chan struct{}, 30) // Number of concurrences
-	var mutex sync.Mutex
 	var wg sync.WaitGroup
 
 	for _, peer := range peerMap {
@@ -249,18 +253,18 @@ func GetAllOpenRPCPeers(netinfo NetInfo, chainid string, timeout float64, visite
 			if err != nil {
 				return
 			}
-			mutex.Lock()
+			peerMapMutex.Lock()
 			peer.RpcReachable = true
 			peerMap[peer.Id] = peer
-			mutex.Unlock()
+			peerMapMutex.Unlock()
 
 			recursionPeers := GetAllOpenRPCPeers(rNetInfo, chainid, timeout, visited, currentDepth+1)
 
-			mutex.Lock()
+			peerMapMutex.Lock()
 			for _, rpcPeer := range recursionPeers {
 				peerMap[rpcPeer.Id] = rpcPeer
 			}
-			mutex.Unlock()
+			peerMapMutex.Unlock()
 
 		}(peer)
 	}
