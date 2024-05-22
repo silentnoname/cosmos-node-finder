@@ -223,60 +223,51 @@ func GetPeersInfo(Netinfo NetInfo, ChainId string) []PeerInfo {
 }
 
 // GetAllOpenRPCPeers filter all reachable public rpc by recursion
-func GetAllOpenRPCPeers(netinfo NetInfo, chainid string, timeout float64, visited map[string]bool, currentDepth int) []PeerInfo {
+func GetAllOpenRPCPeers(netinfo NetInfo, chainid string, timeout float64, visited *sync.Map, currentDepth int) []PeerInfo {
 	peersinfo := GetPeersInfo(netinfo, chainid)
 
-	peerMap := make(map[string]PeerInfo)
-	var visitedMutex sync.Mutex
-	var peerMapMutex sync.Mutex
-
-	visitedMutex.Lock()
-	for _, peer := range peersinfo {
-		if peer.RpcIsOpen && !visited[peer.Id] {
-			peerMap[peer.Id] = peer
-			visited[peer.Id] = true
-		}
-	}
-	visitedMutex.Unlock()
+	var peers []PeerInfo
 
 	sem := make(chan struct{}, 30) // Number of concurrences
 	var wg sync.WaitGroup
 
-	for _, peer := range peerMap {
-		wg.Add(1)
-		go func(peer PeerInfo) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
+	for _, peer := range peersinfo {
+		if peer.RpcIsOpen {
+			_, loaded := visited.LoadOrStore(peer.Id, peer)
+			if !loaded {
+				wg.Add(1)
+				go func(peer PeerInfo) {
+					defer wg.Done()
+					sem <- struct{}{}
+					defer func() { <-sem }()
 
-			rNetInfo, err := GetNetInfo(peer.Rpc, timeout)
-			if err != nil {
-				return
+					rNetInfo, err := GetNetInfo(peer.Rpc, timeout)
+					if err != nil {
+						return
+					}
+
+					peer.RpcReachable = true
+					visited.Store(peer.Id, peer)
+
+					recursionPeers := GetAllOpenRPCPeers(rNetInfo, chainid, timeout, visited, currentDepth+1)
+					for _, rpcPeer := range recursionPeers {
+						visited.Store(rpcPeer.Id, rpcPeer)
+					}
+				}(peer)
 			}
-			peerMapMutex.Lock()
-			peer.RpcReachable = true
-			peerMap[peer.Id] = peer
-			peerMapMutex.Unlock()
-
-			recursionPeers := GetAllOpenRPCPeers(rNetInfo, chainid, timeout, visited, currentDepth+1)
-
-			peerMapMutex.Lock()
-			for _, rpcPeer := range recursionPeers {
-				peerMap[rpcPeer.Id] = rpcPeer
-			}
-			peerMapMutex.Unlock()
-
-		}(peer)
-	}
-	wg.Wait()
-	var filteredOpenPeers []PeerInfo
-	for _, peer := range peerMap {
-		if peer.RpcIsOpen && peer.RpcReachable {
-			filteredOpenPeers = append(filteredOpenPeers, peer)
 		}
 	}
+	wg.Wait()
 
-	return filteredOpenPeers
+	visited.Range(func(key, value interface{}) bool {
+		peer, ok := value.(PeerInfo)
+		if ok && peer.RpcIsOpen && peer.RpcReachable {
+			peers = append(peers, peer)
+		}
+		return true
+	})
+
+	return peers
 }
 
 type RpcStatus struct {
@@ -367,8 +358,8 @@ func GetRpcsInfoByOneRpc(rpcaddr string, chainid string, timeout float64, maxRet
 	if err != nil {
 		return nil, fmt.Errorf("Error to connect the given rpc: %w", err)
 	}
-
-	rpcs := GetAllOpenRPCPeers(rpcnetinfo, chainid, timeout, make(map[string]bool), 0)
+	visited := &sync.Map{}
+	rpcs := GetAllOpenRPCPeers(rpcnetinfo, chainid, timeout, visited, 0)
 	for _, rpc := range rpcs {
 		wg.Add(1)
 		go func(rpc PeerInfo) {
