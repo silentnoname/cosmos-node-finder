@@ -1,10 +1,14 @@
 module github.com/silentnoname/cosmos-node-finder
-go 1.20
+
+go 1.21
+
+toolchain go1.21.10
 
 require (
 	github.com/cometbft/cometbft v0.38.7
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/spf13/cobra v1.8.0
+
 )
 
 require (
@@ -49,5 +53,6 @@ require (
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
 	golang.org/x/net v0.23.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20231120223509-83a465c0220f // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 )
